@@ -1,0 +1,149 @@
+function varargout = Detekcija_tumora(varargin)
+gui_Singleton = 1;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @Detekcija_tumora_OpeningFcn, ...
+                   'gui_OutputFcn',  @Detekcija_tumora_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+
+function Detekcija_tumora_OpeningFcn(hObject, eventdata, handles, varargin)
+handles.output = hObject;
+guidata(hObject, handles);
+
+function varargout = Detekcija_tumora_OutputFcn(hObject, eventdata, handles) 
+varargout{1} = handles.output;
+
+
+%Unos slike.
+function pushbutton1_Callback(hObject, eventdata, handles)
+[NazivFajla,Adresa]=uigetfile({'*.jpg';'*.png'},'Izaberi ulaznu sliku');
+ if isequal(NazivFajla,0) || isequal(Adresa,0)
+       disp('Korisnik je izasao iz odabira slike.')
+ else
+     A=imread(strcat(Adresa,NazivFajla));
+     axes(handles.axes1);
+     imshow(A);
+     setappdata(handles.figure1,'Slika',A);
+    end
+
+
+%Taster za filtriranje. 
+function pushbutton2_Callback(hObject, eventdata, handles)
+B=getappdata(handles.figure1,'Slika');
+F=imdiffusefilt(B); %Filtriranje slike
+C = uint8(F);
+C=imresize(C,[256,256]); 
+if size(C,3)>1 % Vra�a prve tri dimenzije returns first 3 dimensions
+    C=rgb2gray(C);% Pretvara filtriranu sliku u sliku s nivoima sivog
+end
+axes(handles.axes2);
+imshow(C);
+setappdata(handles.figure1,'FiltriranaSlika',C);
+
+%Izdvajanje samog tumora
+function pushbutton3_Callback(hObject, eventdata, handles)
+F=getappdata(handles.figure1,'FiltriranaSlika');
+F=imbinarize(F,0.7); %Binariziranje slike
+%morphological operation
+oznaka=bwlabel(F); %Izdvajanje obiljezja
+Podaci=regionprops(logical(F),'Solidity','Area','BoundingBox'); %Izvla�enje podataka(stastike) o navedenim karakteristikama
+Gustoca=[Podaci.Solidity];
+Povrsina=[Podaci.Area];
+PodrucjeVisokeGustine=Gustoca>0.6; %gives area 60% soldity than brain
+MaksimalnaPovrsina=max(Povrsina(PodrucjeVisokeGustine));
+OznakaTumora=find(Povrsina==MaksimalnaPovrsina);
+tumor=ismember(oznaka,OznakaTumora);
+if MaksimalnaPovrsina>100
+   axes(handles.axes3);
+   imshow(tumor);
+  setappdata(handles.figure1,'OznakaTumora',OznakaTumora);
+  setappdata(handles.figure1,'Tumor',tumor);
+else
+    h = msgbox('No Tumor!!','status');
+    %disp('no tumor');
+    return;
+end
+
+
+%Izdvajanje tumora u kutiji
+function pushbutton4_Callback(hObject, eventdata, handles)
+D=getappdata(handles.figure1,'FiltriranaSlika');
+D1=imbinarize(D,0.7);
+%morphological operation
+label=bwlabel(D1);
+stats=regionprops(logical(D1),'Solidity','Area','BoundingBox');
+Gustina=[stats.Solidity];
+Povrsina=[stats.Area];
+PovrsinaVelikeGustine=Gustina>0.6; %gives area 60% soldity than brain
+maxPovrsina=max(Povrsina(PovrsinaVelikeGustine));
+OznakaTumora=find(Povrsina==maxPovrsina);
+
+Kutija=OznakaTumora;
+kutija = stats(Kutija)
+TrazenaKutija=kutija.BoundingBox;
+axes(handles.axes4);
+imshow(D);
+hold on;
+rectangle('Position',TrazenaKutija,'EdgeColor','g');
+hold off;
+
+
+%Izdvajanje granica tumora
+function pushbutton5_Callback(hObject, eventdata, handles)
+E=getappdata(handles.figure1,'Tumor');
+PopunjenaSlika = imfill(E, 'holes');
+StrukturniElement=strel('square',11);
+ErozivnaSlika=imerode(PopunjenaSlika,StrukturniElement);
+
+tumorGranice=E;
+tumorGranice(ErozivnaSlika)=0;
+axes(handles.axes5);
+imshow(tumorGranice);
+setappdata(handles.figure1,'TumorGranice',tumorGranice);
+
+%Lokacijatumora
+function pushbutton6_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton6 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+novo=getappdata(handles.figure1,'FiltriranaSlika');
+granice=getappdata(handles.figure1,'TumorGranice');
+rgb = novo(:,:,[1 1 1]);
+crvena = rgb(:,:,1);
+crvena(granice)=255;
+zelena= rgb(:,:,2);
+zelena(granice)=0;
+plava = rgb(:,:,3);
+plava(granice)=0;
+UneseneGraniceTumora(:,:,1) = crvena; 
+UneseneGraniceTumora(:,:,2) = zelena; 
+UneseneGraniceTumora(:,:,3) = plava; 
+axes(handles.axes6);
+imshow(UneseneGraniceTumora);
+
+%Izlaz iz aplikacije
+function pushbutton7_Callback(hObject, eventdata, handles)
+delete(handles.figure1);
+
+%Restart aplikacije
+
+function pushbutton8_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton8 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+cla(handles.axes1);
+cla(handles.axes2);
+cla(handles.axes3);
+cla(handles.axes4);
+cla(handles.axes5);
+cla(handles.axes6);
